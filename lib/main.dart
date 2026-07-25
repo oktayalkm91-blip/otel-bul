@@ -4,6 +4,8 @@ void main() {
   runApp(const OtelBulApp());
 }
 
+final ValueNotifier<Set<String>> favorites = ValueNotifier<Set<String>>({});
+
 class OtelBulApp extends StatelessWidget {
   const OtelBulApp({super.key});
 
@@ -27,31 +29,38 @@ class Hotel {
   final String area;
   final double rating;
   final int price;
-  const Hotel(this.name, this.area, this.rating, this.price);
+  final String city;
+  const Hotel(this.name, this.area, this.rating, this.price, this.city);
 }
 
 final Map<String, List<Hotel>> hotelsByCity = {
   'İstanbul': [
-    Hotel('Boğaz Konak Otel', 'Beşiktaş', 4.7, 3200),
-    Hotel('Sultanahmet Butik', 'Fatih', 4.4, 2450),
-    Hotel('Kadıköy Loft', 'Kadıköy', 4.2, 1980),
-    Hotel('Taksim City Suites', 'Beyoğlu', 4.0, 2100),
+    Hotel('Boğaz Konak Otel', 'Beşiktaş', 4.7, 3200, 'İstanbul'),
+    Hotel('Sultanahmet Butik', 'Fatih', 4.4, 2450, 'İstanbul'),
+    Hotel('Kadıköy Loft', 'Kadıköy', 4.2, 1980, 'İstanbul'),
+    Hotel('Taksim City Suites', 'Beyoğlu', 4.0, 2100, 'İstanbul'),
+    Hotel('Üsküdar Sahil Otel', 'Üsküdar', 4.3, 2250, 'İstanbul'),
+    Hotel('Şişli İş Oteli', 'Şişli', 3.9, 1850, 'İstanbul'),
   ],
   'Antalya': [
-    Hotel('Liman Butik Otel', 'Konyaaltı', 4.6, 2150),
-    Hotel('Kaleiçi Konak Otel', 'Kaleiçi', 4.3, 2640),
-    Hotel('Lara Sahil Resort', 'Lara', 4.8, 3920),
-    Hotel('Side Antik Pansiyon', 'Side', 4.1, 1750),
+    Hotel('Liman Butik Otel', 'Konyaaltı', 4.6, 2150, 'Antalya'),
+    Hotel('Kaleiçi Konak Otel', 'Kaleiçi', 4.3, 2640, 'Antalya'),
+    Hotel('Lara Sahil Resort', 'Lara', 4.8, 3920, 'Antalya'),
+    Hotel('Side Antik Pansiyon', 'Side', 4.1, 1750, 'Antalya'),
+    Hotel('Belek Golf Resort', 'Belek', 4.7, 4200, 'Antalya'),
+    Hotel('Kemer Çam Ev', 'Kemer', 4.2, 2050, 'Antalya'),
   ],
   'Bodrum': [
-    Hotel('Gümbet Marina Otel', 'Gümbet', 4.5, 3100),
-    Hotel('Bitez Zeytinlik Ev', 'Bitez', 4.3, 2300),
-    Hotel('Yalıkavak Beyaz Konak', 'Yalıkavak', 4.9, 5400),
+    Hotel('Gümbet Marina Otel', 'Gümbet', 4.5, 3100, 'Bodrum'),
+    Hotel('Bitez Zeytinlik Ev', 'Bitez', 4.3, 2300, 'Bodrum'),
+    Hotel('Yalıkavak Beyaz Konak', 'Yalıkavak', 4.9, 5400, 'Bodrum'),
+    Hotel('Turgutreis Sahil Pansiyon', 'Turgutreis', 4.0, 1900, 'Bodrum'),
   ],
   'Kapadokya': [
-    Hotel('Mağara Ev Göreme', 'Göreme', 4.8, 2900),
-    Hotel('Ürgüp Taş Konak', 'Ürgüp', 4.4, 1900),
-    Hotel('Uçhisar Kaya Otel', 'Uçhisar', 4.6, 2600),
+    Hotel('Mağara Ev Göreme', 'Göreme', 4.8, 2900, 'Kapadokya'),
+    Hotel('Ürgüp Taş Konak', 'Ürgüp', 4.4, 1900, 'Kapadokya'),
+    Hotel('Uçhisar Kaya Otel', 'Uçhisar', 4.6, 2600, 'Kapadokya'),
+    Hotel('Avanos Çömlek Ev', 'Avanos', 4.1, 1700, 'Kapadokya'),
   ],
 };
 
@@ -68,14 +77,43 @@ enum SortBy { fiyat, puan }
   return (label: 'Bölge ortalaması', bg: const Color(0xFFF7EEDD), fg: const Color(0xFF966A22), tier: PriceTier.ortalama);
 }
 
+Widget favoriteButton(Hotel hotel) {
+  return ValueListenableBuilder<Set<String>>(
+    valueListenable: favorites,
+    builder: (context, favSet, _) {
+      final isFav = favSet.contains(hotel.name);
+      return IconButton(
+        icon: Icon(isFav ? Icons.favorite : Icons.favorite_border, color: isFav ? const Color(0xFFA6432D) : Colors.grey, size: 20),
+        onPressed: () {
+          final updated = Set<String>.from(favSet);
+          if (isFav) {
+            updated.remove(hotel.name);
+          } else {
+            updated.add(hotel.name);
+          }
+          favorites.value = updated;
+        },
+      );
+    },
+  );
+}
+
 // ---------- EKRAN 1: Arama ----------
 
-class SearchScreen extends StatelessWidget {
+class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
 
   @override
+  State<SearchScreen> createState() => _SearchScreenState();
+}
+
+class _SearchScreenState extends State<SearchScreen> {
+  String query = '';
+
+  @override
   Widget build(BuildContext context) {
-    final cities = hotelsByCity.keys.toList();
+    final cities = hotelsByCity.keys.where((c) => c.toLowerCase().contains(query.toLowerCase())).toList();
+
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -83,32 +121,62 @@ class SearchScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Nereye gidiyorsun?', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Expanded(
+                    child: Text('Nereye gidiyorsun?', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w600)),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.favorite, color: Color(0xFFA6432D)),
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const FavoritesScreen()),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                onChanged: (value) => setState(() => query = value),
+                decoration: InputDecoration(
+                  hintText: 'Şehir ara (örn. Antalya)',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 12),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Colors.black12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
               const Text('Şehir seç', style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 12),
               Expanded(
-                child: ListView.separated(
-                  itemCount: cities.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final city = cities[index];
-                    return Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Colors.black12),
+                child: cities.isEmpty
+                    ? const Center(child: Text('Şehir bulunamadı', style: TextStyle(color: Colors.grey)))
+                    : ListView.separated(
+                        itemCount: cities.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final city = cities[index];
+                          return Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.black12),
+                            ),
+                            child: ListTile(
+                              title: Text(city),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute(builder: (_) => ListScreen(city: city)),
+                              ),
+                            ),
+                          );
+                        },
                       ),
-                      child: ListTile(
-                        title: Text(city),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => ListScreen(city: city)),
-                        ),
-                      ),
-                    );
-                  },
-                ),
               ),
             ],
           ),
@@ -118,7 +186,7 @@ class SearchScreen extends StatelessWidget {
   }
 }
 
-// ---------- EKRAN 2: Sonuç listesi (filtre + sıralama) ----------
+// ---------- EKRAN 2: Sonuç listesi ----------
 
 class ListScreen extends StatefulWidget {
   final String city;
@@ -216,7 +284,7 @@ class _ListScreenState extends State<ListScreen> {
                         return InkWell(
                           borderRadius: BorderRadius.circular(14),
                           onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => DetailScreen(city: widget.city, hotel: hotel, hotels: baseHotels)),
+                            MaterialPageRoute(builder: (_) => DetailScreen(hotel: hotel, hotels: baseHotels)),
                           ),
                           child: Container(
                             padding: const EdgeInsets.all(12),
@@ -228,11 +296,17 @@ class _ListScreenState extends State<ListScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  height: 70,
-                                  decoration: BoxDecoration(color: const Color(0xFFEFEAE0), borderRadius: BorderRadius.circular(10)),
+                                Stack(
+                                  children: [
+                                    Container(
+                                      height: 70,
+                                      width: double.infinity,
+                                      decoration: BoxDecoration(color: const Color(0xFFEFEAE0), borderRadius: BorderRadius.circular(10)),
+                                    ),
+                                    Positioned(right: 0, top: -8, child: favoriteButton(hotel)),
+                                  ],
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 4),
                                 Text(hotel.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                                 const SizedBox(height: 2),
                                 Text('★ ${hotel.rating} · ${hotel.area}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
@@ -265,10 +339,9 @@ class _ListScreenState extends State<ListScreen> {
 // ---------- EKRAN 3: Otel detayı ----------
 
 class DetailScreen extends StatelessWidget {
-  final String city;
   final Hotel hotel;
   final List<Hotel> hotels;
-  const DetailScreen({super.key, required this.city, required this.hotel, required this.hotels});
+  const DetailScreen({super.key, required this.hotel, required this.hotels});
 
   @override
   Widget build(BuildContext context) {
@@ -283,6 +356,7 @@ class DetailScreen extends StatelessWidget {
         backgroundColor: const Color(0xFFF6F2E9),
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black),
+        actions: [favoriteButton(hotel)],
       ),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -296,7 +370,7 @@ class DetailScreen extends StatelessWidget {
             const SizedBox(height: 14),
             Text(hotel.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
             const SizedBox(height: 4),
-            Text('★ ${hotel.rating} · ${hotel.area}, $city', style: const TextStyle(color: Colors.grey)),
+            Text('★ ${hotel.rating} · ${hotel.area}, ${hotel.city}', style: const TextStyle(color: Colors.grey)),
             const SizedBox(height: 20),
             Text('₺${hotel.price} / gece', style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w600)),
             const SizedBox(height: 4),
@@ -323,6 +397,75 @@ class DetailScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ---------- EKRAN 4: Favoriler ----------
+
+class FavoritesScreen extends StatelessWidget {
+  const FavoritesScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final allHotels = hotelsByCity.values.expand((list) => list).toList();
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFF6F2E9),
+        elevation: 0,
+        title: const Text('Favorilerim', style: TextStyle(color: Colors.black)),
+        iconTheme: const IconThemeData(color: Colors.black),
+      ),
+      body: ValueListenableBuilder<Set<String>>(
+        valueListenable: favorites,
+        builder: (context, favSet, _) {
+          final favHotels = allHotels.where((h) => favSet.contains(h.name)).toList();
+          if (favHotels.isEmpty) {
+            return const Center(child: Text('Henüz favori otelin yok', style: TextStyle(color: Colors.grey)));
+          }
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: ListView.separated(
+              itemCount: favHotels.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final hotel = favHotels[index];
+                final cityHotels = hotelsByCity[hotel.city]!;
+                return InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => DetailScreen(hotel: hotel, hotels: cityHotels)),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.black12),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(hotel.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 2),
+                              Text('${hotel.area}, ${hotel.city} · ₺${hotel.price}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                        favoriteButton(hotel),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          );
+        },
       ),
     );
   }
