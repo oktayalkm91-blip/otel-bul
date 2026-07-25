@@ -56,6 +56,7 @@ final Map<String, List<Hotel>> hotelsByCity = {
 };
 
 enum PriceTier { hepsi, uygun, ortalama, pahali }
+enum SortBy { fiyat, puan }
 
 ({String label, Color bg, Color fg, PriceTier tier}) priceStatus(int price, double avg) {
   final diff = ((price - avg) / avg) * 100;
@@ -117,7 +118,7 @@ class SearchScreen extends StatelessWidget {
   }
 }
 
-// ---------- EKRAN 2: Sonuç listesi (filtre eklendi) ----------
+// ---------- EKRAN 2: Sonuç listesi (filtre + sıralama) ----------
 
 class ListScreen extends StatefulWidget {
   final String city;
@@ -129,15 +130,20 @@ class ListScreen extends StatefulWidget {
 
 class _ListScreenState extends State<ListScreen> {
   PriceTier selectedTier = PriceTier.hepsi;
+  SortBy sortBy = SortBy.fiyat;
 
   @override
   Widget build(BuildContext context) {
-    final allHotels = List<Hotel>.from(hotelsByCity[widget.city]!)..sort((a, b) => a.price.compareTo(b.price));
-    final avg = allHotels.map((h) => h.price).reduce((a, b) => a + b) / allHotels.length;
+    final baseHotels = List<Hotel>.from(hotelsByCity[widget.city]!);
+    final avg = baseHotels.map((h) => h.price).reduce((a, b) => a + b) / baseHotels.length;
 
-    final hotels = selectedTier == PriceTier.hepsi
-        ? allHotels
-        : allHotels.where((h) => priceStatus(h.price, avg).tier == selectedTier).toList();
+    var hotels = selectedTier == PriceTier.hepsi
+        ? baseHotels
+        : baseHotels.where((h) => priceStatus(h.price, avg).tier == selectedTier).toList();
+
+    hotels.sort((a, b) => sortBy == SortBy.fiyat
+        ? a.price.compareTo(b.price)
+        : b.rating.compareTo(a.rating));
 
     Widget chip(String label, PriceTier tier) {
       final selected = selectedTier == tier;
@@ -167,9 +173,24 @@ class _ListScreenState extends State<ListScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${allHotels.length} otel · bölge ortalaması ₺${avg.round()}',
-                style: const TextStyle(color: Colors.grey, fontSize: 13)),
-            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('${baseHotels.length} otel · bölge ortalaması ₺${avg.round()}',
+                    style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                DropdownButton<SortBy>(
+                  value: sortBy,
+                  underline: const SizedBox(),
+                  style: const TextStyle(color: Colors.black87, fontSize: 13),
+                  items: const [
+                    DropdownMenuItem(value: SortBy.fiyat, child: Text('Fiyata göre')),
+                    DropdownMenuItem(value: SortBy.puan, child: Text('Puana göre')),
+                  ],
+                  onChanged: (value) => setState(() => sortBy = value!),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -195,7 +216,7 @@ class _ListScreenState extends State<ListScreen> {
                         return InkWell(
                           borderRadius: BorderRadius.circular(14),
                           onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(builder: (_) => DetailScreen(city: widget.city, hotel: hotel, hotels: allHotels)),
+                            MaterialPageRoute(builder: (_) => DetailScreen(city: widget.city, hotel: hotel, hotels: baseHotels)),
                           ),
                           child: Container(
                             padding: const EdgeInsets.all(12),
