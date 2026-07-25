@@ -55,14 +55,16 @@ final Map<String, List<Hotel>> hotelsByCity = {
   ],
 };
 
-({String label, Color bg, Color fg}) priceStatus(int price, double avg) {
+enum PriceTier { hepsi, uygun, ortalama, pahali }
+
+({String label, Color bg, Color fg, PriceTier tier}) priceStatus(int price, double avg) {
   final diff = ((price - avg) / avg) * 100;
   if (diff <= -10) {
-    return (label: '%${(-diff).round()} uygun', bg: const Color(0xFFEAF1E3), fg: const Color(0xFF4C6B34));
+    return (label: '%${(-diff).round()} uygun', bg: const Color(0xFFEAF1E3), fg: const Color(0xFF4C6B34), tier: PriceTier.uygun);
   } else if (diff >= 10) {
-    return (label: '%${diff.round()} pahalı', bg: const Color(0xFFF6E6E1), fg: const Color(0xFFA6432D));
+    return (label: '%${diff.round()} pahalı', bg: const Color(0xFFF6E6E1), fg: const Color(0xFFA6432D), tier: PriceTier.pahali);
   }
-  return (label: 'Bölge ortalaması', bg: const Color(0xFFF7EEDD), fg: const Color(0xFF966A22));
+  return (label: 'Bölge ortalaması', bg: const Color(0xFFF7EEDD), fg: const Color(0xFF966A22), tier: PriceTier.ortalama);
 }
 
 // ---------- EKRAN 1: Arama ----------
@@ -115,22 +117,49 @@ class SearchScreen extends StatelessWidget {
   }
 }
 
-// ---------- EKRAN 2: Sonuç listesi ----------
+// ---------- EKRAN 2: Sonuç listesi (filtre eklendi) ----------
 
-class ListScreen extends StatelessWidget {
+class ListScreen extends StatefulWidget {
   final String city;
   const ListScreen({super.key, required this.city});
 
   @override
+  State<ListScreen> createState() => _ListScreenState();
+}
+
+class _ListScreenState extends State<ListScreen> {
+  PriceTier selectedTier = PriceTier.hepsi;
+
+  @override
   Widget build(BuildContext context) {
-    final hotels = List<Hotel>.from(hotelsByCity[city]!)..sort((a, b) => a.price.compareTo(b.price));
-    final avg = hotels.map((h) => h.price).reduce((a, b) => a + b) / hotels.length;
+    final allHotels = List<Hotel>.from(hotelsByCity[widget.city]!)..sort((a, b) => a.price.compareTo(b.price));
+    final avg = allHotels.map((h) => h.price).reduce((a, b) => a + b) / allHotels.length;
+
+    final hotels = selectedTier == PriceTier.hepsi
+        ? allHotels
+        : allHotels.where((h) => priceStatus(h.price, avg).tier == selectedTier).toList();
+
+    Widget chip(String label, PriceTier tier) {
+      final selected = selectedTier == tier;
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: ChoiceChip(
+          label: Text(label),
+          selected: selected,
+          onSelected: (_) => setState(() => selectedTier = tier),
+          selectedColor: const Color(0xFF1D6B8C),
+          labelStyle: TextStyle(color: selected ? Colors.white : Colors.black87, fontSize: 12),
+          backgroundColor: Colors.white,
+          side: const BorderSide(color: Colors.black12),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFFF6F2E9),
         elevation: 0,
-        title: Text(city, style: const TextStyle(color: Colors.black)),
+        title: Text(widget.city, style: const TextStyle(color: Colors.black)),
         iconTheme: const IconThemeData(color: Colors.black),
       ),
       body: Padding(
@@ -138,58 +167,72 @@ class ListScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${hotels.length} otel · bölge ortalaması ₺${avg.round()}',
+            Text('${allHotels.length} otel · bölge ortalaması ₺${avg.round()}',
                 style: const TextStyle(color: Colors.grey, fontSize: 13)),
+            const SizedBox(height: 12),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  chip('Tümü', PriceTier.hepsi),
+                  chip('Uygun', PriceTier.uygun),
+                  chip('Ortalama', PriceTier.ortalama),
+                  chip('Pahalı', PriceTier.pahali),
+                ],
+              ),
+            ),
             const SizedBox(height: 14),
             Expanded(
-              child: ListView.separated(
-                itemCount: hotels.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final hotel = hotels[index];
-                  final status = priceStatus(hotel.price, avg);
+              child: hotels.isEmpty
+                  ? const Center(child: Text('Bu filtrede otel yok', style: TextStyle(color: Colors.grey)))
+                  : ListView.separated(
+                      itemCount: hotels.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (context, index) {
+                        final hotel = hotels[index];
+                        final status = priceStatus(hotel.price, avg);
 
-                  return InkWell(
-                    borderRadius: BorderRadius.circular(14),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => DetailScreen(city: city, hotel: hotel, hotels: hotels)),
-                    ),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: Colors.black12),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            height: 70,
-                            decoration: BoxDecoration(color: const Color(0xFFEFEAE0), borderRadius: BorderRadius.circular(10)),
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(14),
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => DetailScreen(city: widget.city, hotel: hotel, hotels: allHotels)),
                           ),
-                          const SizedBox(height: 8),
-                          Text(hotel.name, style: const TextStyle(fontWeight: FontWeight.w600)),
-                          const SizedBox(height: 2),
-                          Text('★ ${hotel.rating} · ${hotel.area}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('₺${hotel.price}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(color: status.bg, borderRadius: BorderRadius.circular(6)),
-                                child: Text(status.label, style: TextStyle(color: status.fg, fontSize: 11)),
-                              ),
-                            ],
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: Colors.black12),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  height: 70,
+                                  decoration: BoxDecoration(color: const Color(0xFFEFEAE0), borderRadius: BorderRadius.circular(10)),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(hotel.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                                const SizedBox(height: 2),
+                                Text('★ ${hotel.rating} · ${hotel.area}', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                                const SizedBox(height: 8),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('₺${hotel.price}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(color: status.bg, borderRadius: BorderRadius.circular(6)),
+                                      child: Text(status.label, style: TextStyle(color: status.fg, fontSize: 11)),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
             ),
           ],
         ),
